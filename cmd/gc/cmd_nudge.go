@@ -66,6 +66,9 @@ type nudgeTarget struct {
 	sessionID         string
 	continuationEpoch string
 	sessionName       string
+	// runtimeSessionName is the provider-local session used for delivery. It can
+	// differ from sessionName for remote substrates that run a fixed tmux session.
+	runtimeSessionName string
 }
 
 func (t nudgeTarget) agentKey() string {
@@ -137,6 +140,16 @@ func (t nudgeTarget) providerName() string {
 		return strings.TrimSpace(t.cfg.Workspace.Provider)
 	}
 	return ""
+}
+
+func (t nudgeTarget) deliverySessionName() string {
+	if name := strings.TrimSpace(t.runtimeSessionName); name != "" {
+		return name
+	}
+	if name := strings.TrimSpace(os.Getenv("GC_TMUX_SESSION")); name != "" {
+		return name
+	}
+	return t.sessionName
 }
 
 type queuedNudgeOptions struct {
@@ -411,15 +424,17 @@ func cmdNudgePoll(args []string, sessionName string, interval, quiescence time.D
 		fmt.Fprintf(stderr, "gc nudge poll: %v\n", err) //nolint:errcheck
 		return 1
 	}
-	if sessionName != "" {
-		target.sessionName = sessionName
+	target.runtimeSessionName = strings.TrimSpace(sessionName)
+	if target.runtimeSessionName == "" {
+		target.runtimeSessionName = strings.TrimSpace(os.Getenv("GC_TMUX_SESSION"))
 	}
-	if target.sessionName == "" {
+	runtimeSessionName := target.deliverySessionName()
+	if runtimeSessionName == "" {
 		fmt.Fprintln(stderr, "gc nudge poll: session name unavailable") //nolint:errcheck
 		return 1
 	}
 
-	release, err := acquireNudgePollerLease(target.cityPath, target.sessionName)
+	release, err := acquireNudgePollerLease(target.cityPath, runtimeSessionName)
 	if err != nil {
 		if errors.Is(err, errNudgePollerRunning) {
 			return 0
@@ -521,7 +536,7 @@ func workerHandleForNudgeTarget(target nudgeTarget, store beads.Store, sp runtim
 	}
 	return worker.NewRuntimeHandle(worker.RuntimeHandleConfig{
 		Provider:     sp,
-		SessionName:  target.sessionName,
+		SessionName:  target.deliverySessionName(),
 		ProviderName: strings.TrimSpace(target.providerName()),
 		Transport:    strings.TrimSpace(target.sessionTransport()),
 	})
@@ -531,7 +546,7 @@ func workerObserveNudgeTarget(target nudgeTarget, store beads.Store, sp runtime.
 	if target.sessionID != "" {
 		return workerObserveSessionTargetWithConfig(target.cityPath, store, sp, target.cfg, target.sessionID)
 	}
-	return workerObserveSessionTargetWithConfig(target.cityPath, store, sp, target.cfg, target.sessionName)
+	return workerObserveSessionTargetWithConfig(target.cityPath, store, sp, target.cfg, target.deliverySessionName())
 }
 
 func deliverSessionNudgeWithProvider(target nudgeTarget, sp runtime.Provider, message string, mode nudgeDeliveryMode, stdout, stderr io.Writer) int {
@@ -795,13 +810,14 @@ func pollerSessionIdleEnough(target nudgeTarget, store beads.Store, sp runtime.P
 }
 
 func maybeStartNudgePoller(target nudgeTarget) {
-	if target.sessionName == "" {
+	runtimeSessionName := target.deliverySessionName()
+	if runtimeSessionName == "" {
 		return
 	}
 	if target.sessionTransport() == "acp" {
 		return
 	}
-	if err := startNudgePoller(target.cityPath, target.agentKey(), target.sessionName); err != nil {
+	if err := startNudgePoller(target.cityPath, target.agentKey(), runtimeSessionName); err != nil {
 		return
 	}
 }

@@ -198,6 +198,16 @@ func TestDefaultMailIdentityPrefersSessionIDOverGCAgentFallback(t *testing.T) {
 	}
 }
 
+func TestDefaultMailIdentityPrefersSessionIDOverAlias(t *testing.T) {
+	t.Setenv("GC_ALIAS", "public-alias")
+	t.Setenv("GC_AGENT", "worker")
+	t.Setenv("GC_SESSION_ID", "session-123")
+
+	if got := defaultMailIdentity(); got != "session-123" {
+		t.Fatalf("defaultMailIdentity() = %q, want session-123", got)
+	}
+}
+
 func TestDefaultMailIdentityFallsBackToGCAgentWithoutAliasOrSession(t *testing.T) {
 	t.Setenv("GC_ALIAS", "")
 	t.Setenv("GC_AGENT", "mayor")

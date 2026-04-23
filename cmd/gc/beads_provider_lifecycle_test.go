@@ -484,7 +484,19 @@ func TestGcBeadsBdStartUsesRootBeadsDataDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	scriptEnv := append(os.Environ(),
+	// Strip every GC_* var from the inherited environment so the script's
+	// path resolution is driven entirely by GC_CITY_PATH below. Otherwise a
+	// parent GC_CITY_RUNTIME_DIR points state writes at the caller's city.
+	cleanEnv := make([]string, 0, len(os.Environ()))
+	for _, e := range os.Environ() {
+		if strings.HasPrefix(e, "GC_") {
+			continue
+		}
+		cleanEnv = append(cleanEnv, e)
+	}
+	scriptEnv := make([]string, len(cleanEnv), len(cleanEnv)+4)
+	copy(scriptEnv, cleanEnv)
+	scriptEnv = append(scriptEnv,
 		"HOME="+homeDir,
 		"GIT_CONFIG_GLOBAL="+gitConfig,
 		"GC_CITY_PATH="+cityPath,

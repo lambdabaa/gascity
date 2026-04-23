@@ -223,3 +223,58 @@ func TestReleaseOrphanedPoolAssignments_KeepsOpenSessionOwnership(t *testing.T) 
 		t.Fatalf("assignee = %q, want worker-live", got.Assignee)
 	}
 }
+
+func TestReleaseOrphanedPoolAssignments_ReopensDrainedSessionOwnership(t *testing.T) {
+	store := beads.NewMemStore()
+	session, err := store.Create(beads.Bead{
+		Title:  "worker",
+		Type:   "session",
+		Status: "open",
+		Metadata: map[string]string{
+			"session_name":         "worker-drained",
+			"template":             "worker",
+			"agent_name":           "worker",
+			"state":                "drained",
+			poolManagedMetadataKey: boolMetadata(true),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create session bead: %v", err)
+	}
+	work, err := store.Create(beads.Bead{
+		Title:    "drained pool work",
+		Assignee: "worker-drained",
+		Metadata: map[string]string{"gc.routed_to": "worker"},
+	})
+	if err != nil {
+		t.Fatalf("Create work bead: %v", err)
+	}
+	if err := store.Update(work.ID, beads.UpdateOpts{Status: stringPtr("in_progress")}); err != nil {
+		t.Fatalf("Set work status: %v", err)
+	}
+	work, err = store.Get(work.ID)
+	if err != nil {
+		t.Fatalf("Reload work bead: %v", err)
+	}
+
+	released := releaseOrphanedPoolAssignments(
+		store,
+		&config.City{Agents: []config.Agent{{Name: "worker", MinActiveSessions: intPtr(0), MaxActiveSessions: intPtr(2)}}},
+		[]beads.Bead{session},
+		[]beads.Bead{work},
+	)
+	if len(released) != 1 || released[0] != work.ID {
+		t.Fatalf("released = %v, want [%s]", released, work.ID)
+	}
+
+	got, err := store.Get(work.ID)
+	if err != nil {
+		t.Fatalf("Get work bead: %v", err)
+	}
+	if got.Status != "open" {
+		t.Fatalf("status = %q, want open", got.Status)
+	}
+	if got.Assignee != "" {
+		t.Fatalf("assignee = %q, want empty", got.Assignee)
+	}
+}

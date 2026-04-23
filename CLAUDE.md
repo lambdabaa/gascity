@@ -178,11 +178,37 @@ Lesson test — it becomes LESS useful as models improve.
 
 - `TESTING.md` — testing philosophy and tier boundaries. Read before writing any test.
 
+## Long-running commands (Bash tool timeout)
+
+The default Claude Code `Bash` tool timeout is 2 minutes (120000 ms).
+Several routine commands in this repo exceed that budget and will be
+killed by `SIGTERM` if the default is used:
+
+| Command                              | Wall time (measured on main) |
+|--------------------------------------|------------------------------|
+| `make check`                         | 15+ min (runs lint/fmt/vet/test) |
+| `make test` / `go test ./...`        | 10+ min                      |
+| `make fmt-check`                     | 6+ min                       |
+| `make test-cover`                    | 10+ min                      |
+| `make test-integration`              | 8 min (capped by `-timeout 8m`) |
+| `make test-acceptance`               | up to 5 min                  |
+
+**When running any of these, pass `timeout: 1200000` (20 minutes) to
+the `Bash` tool.** Use 1800000 (30 min) for the acceptance-b/c tiers and
+tutorial goldens. If you do not set a timeout, the command will be
+killed mid-run, may leave partial state on disk, and can crash-loop the
+agent session.
+
+This guidance is enforced by `TestClaudeMDTimeoutGuidance` in
+`test/docsync`. Do not remove the table or the timeout recommendation
+without updating the regression test and the bug reference in
+`gastownhall/gascity#509`.
+
 ## Code quality gates
 
 Before considering any task complete:
 
-- `go test ./...` passes
+- `go test ./...` passes (use `timeout: 1200000` — see above)
 - `go vet ./...` clean
 - Every exported function has a doc comment
 - No premature abstractions

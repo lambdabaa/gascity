@@ -47,7 +47,7 @@ func marshalStartConfig(cfg runtime.Config) ([]byte, error) {
 	}
 	sc := startConfig{
 		WorkDir:            cfg.WorkDir,
-		Command:            cfg.Command,
+		Command:            cfg.CommandLine(),
 		Env:                cfg.Env,
 		ProcessNames:       cfg.ProcessNames,
 		Nudge:              cfg.Nudge,

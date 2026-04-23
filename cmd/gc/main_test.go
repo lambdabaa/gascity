@@ -1228,6 +1228,32 @@ func TestFindSessionNameByTemplate_UsesLegacyAgentLabelForPoolInstance(t *testin
 	}
 }
 
+func TestLookupPoolSessionNames_AppendsPoolSlotWhenAgentNameIsTemplate(t *testing.T) {
+	store := beads.NewMemStore()
+	_, err := store.Create(beads.Bead{
+		Title:  "claude",
+		Type:   sessionBeadType,
+		Labels: []string{sessionBeadLabel, "agent:claude"},
+		Metadata: map[string]string{
+			"agent_name":   "claude",
+			"template":     "claude",
+			"pool_slot":    "1",
+			"session_name": "claude-ae-6fx",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := lookupPoolSessionNames(store, "claude")
+	if err != nil {
+		t.Fatalf("lookupPoolSessionNames: %v", err)
+	}
+	if got["claude-1"] != "claude-ae-6fx" {
+		t.Fatalf("lookupPoolSessionNames(claude) = %#v, want claude-1 -> claude-ae-6fx", got)
+	}
+}
+
 func TestLookupPoolSessionNames_RejectsSharedPrefixSiblingTemplates(t *testing.T) {
 	store := beads.NewMemStore()
 	for _, bead := range []beads.Bead{

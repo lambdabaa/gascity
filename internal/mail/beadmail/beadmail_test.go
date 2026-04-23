@@ -2,6 +2,7 @@ package beadmail
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/gastownhall/gascity/internal/beads"
@@ -57,6 +58,28 @@ func TestInboxDoesNotCallBroadList(t *testing.T) {
 	}
 	if len(msgs) != 1 {
 		t.Errorf("Inbox = %d messages, want 1", len(msgs))
+	}
+}
+
+func TestBdStoreCheckSkipsMessageLabelSupplement(t *testing.T) {
+	runner := func(_ string, name string, args ...string) ([]byte, error) {
+		cmd := name + " " + strings.Join(args, " ")
+		if strings.Contains(cmd, "--label=gc:message") {
+			t.Fatalf("BdStore mail check used broad gc:message label fallback: %s", cmd)
+		}
+		if strings.Contains(cmd, "--assignee=mayor") && strings.Contains(cmd, "--type=message") && strings.Contains(cmd, "--status=open") {
+			return []byte(`[{"id":"msg-1","title":"hello","description":"body","status":"open","issue_type":"message","assignee":"mayor","from":"human","created_at":"2026-01-02T03:04:05Z","labels":["gc:message"]}]`), nil
+		}
+		return nil, errors.New("unexpected command: " + cmd)
+	}
+	p := New(beads.NewBdStore(t.TempDir(), runner))
+
+	msgs, err := p.Check("mayor")
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if len(msgs) != 1 || msgs[0].ID != "msg-1" {
+		t.Fatalf("Check = %#v, want msg-1", msgs)
 	}
 }
 

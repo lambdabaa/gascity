@@ -1146,6 +1146,13 @@ type DaemonConfig struct {
 	// Nil (unset) defaults to 8. Set higher for workspaces with a fast
 	// dedicated dolt server, or lower to reduce contention on slow storage.
 	ProbeConcurrency *int `toml:"probe_concurrency,omitempty" jsonschema:"default=8"`
+	// MaxWakesPerTick limits how many sessions can be woken per reconciler
+	// tick to prevent thundering herd after controller restart.
+	// Nil (unset) defaults to 5.
+	MaxWakesPerTick *int `toml:"max_wakes_per_tick,omitempty" jsonschema:"default=5"`
+	// MaxParallelStartsPerWave limits how many sessions can be started
+	// concurrently within a single dependency wave. Nil (unset) defaults to 3.
+	MaxParallelStartsPerWave *int `toml:"max_parallel_starts_per_wave,omitempty" jsonschema:"default=3"`
 }
 
 // PatrolIntervalDuration returns the patrol interval as a time.Duration.
@@ -1212,6 +1219,36 @@ func (d *DaemonConfig) ProbeConcurrencyOrDefault() int {
 		return 1
 	}
 	return *d.ProbeConcurrency
+}
+
+// DefaultMaxWakesPerTick is the default max sessions woken per reconciler tick.
+const DefaultMaxWakesPerTick = 5
+
+// MaxWakesPerTickOrDefault returns the max wakes per tick.
+// Nil (unset) defaults to DefaultMaxWakesPerTick. Values below 1 are clamped to 1.
+func (d *DaemonConfig) MaxWakesPerTickOrDefault() int {
+	if d.MaxWakesPerTick == nil {
+		return DefaultMaxWakesPerTick
+	}
+	if *d.MaxWakesPerTick < 1 {
+		return 1
+	}
+	return *d.MaxWakesPerTick
+}
+
+// DefaultMaxParallelStartsPerWave is the default max concurrent session starts per wave.
+const DefaultMaxParallelStartsPerWave = 3
+
+// MaxParallelStartsPerWaveOrDefault returns the max parallel starts per wave.
+// Nil (unset) defaults to DefaultMaxParallelStartsPerWave. Values below 1 are clamped to 1.
+func (d *DaemonConfig) MaxParallelStartsPerWaveOrDefault() int {
+	if d.MaxParallelStartsPerWave == nil {
+		return DefaultMaxParallelStartsPerWave
+	}
+	if *d.MaxParallelStartsPerWave < 1 {
+		return 1
+	}
+	return *d.MaxParallelStartsPerWave
 }
 
 // DriftDrainTimeoutDuration returns the drift drain timeout as a time.Duration.
@@ -1702,13 +1739,24 @@ func (a *Agent) EffectiveScaleCheck() string {
 		return a.ScaleCheck
 	}
 	template := a.QualifiedName()
+	routedTemplate := shellSingleQuote(template)
+	sessionPrefix := shellSingleQuote(a.Name + "-")
 	return `ready=$(bd ready --metadata-field gc.routed_to=` + template +
 		` --unassigned --json 2>/dev/null | jq 'length' 2>/dev/null); ` +
 		`active=$(bd list --metadata-field gc.routed_to=` + template +
 		` --status=in_progress --no-assignee --json 2>/dev/null | jq 'length' 2>/dev/null); ` +
+		`claimed=$(bd list --metadata-field gc.routed_to=` + template +
+		` --status=in_progress --json 2>/dev/null | jq '[.[] | select((.assignee // "") != "")] | length' 2>/dev/null); ` +
+		`assigned=$(bd list --status=in_progress --json 2>/dev/null | jq --arg prefix ` + sessionPrefix +
+		` --arg routed ` + routedTemplate +
+		` '[.[] | select(((.assignee // "") | startswith($prefix)) and ((.metadata["gc.routed_to"] // "") != $routed))] | length' 2>/dev/null); ` +
 		`molecules=$(bd list --metadata-field gc.routed_to=` + template +
 		` --status=open --type=molecule --no-assignee --json 2>/dev/null | jq 'length' 2>/dev/null); ` +
-		`echo "$(( ${ready:-0} + ${active:-0} + ${molecules:-0} ))" || echo 0`
+		`echo "$(( ${ready:-0} + ${active:-0} + ${claimed:-0} + ${assigned:-0} + ${molecules:-0} ))" || echo 0`
+}
+
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
 // EffectiveMaxActiveSessions returns the agent's max active sessions.
@@ -1809,6 +1857,7 @@ func InjectImplicitAgents(cfg *City) {
 	providers := configuredProviderOrder(configured)
 
 	promptTemplate := citylayout.PromptsRoot + "/pool-worker.md"
+	startupNudge := "Check your hook for work assignments."
 
 	slingFormula := cfg.AgentDefaults.DefaultSlingFormula
 	if slingFormula == "" {
@@ -1824,6 +1873,7 @@ func InjectImplicitAgents(cfg *City) {
 			Name:                name,
 			Provider:            name,
 			PromptTemplate:      promptTemplate,
+			Nudge:               startupNudge,
 			DefaultSlingFormula: &slingFormula,
 			Implicit:            true,
 		})
@@ -1840,6 +1890,7 @@ func InjectImplicitAgents(cfg *City) {
 				Dir:                 rig.Name,
 				Provider:            name,
 				PromptTemplate:      promptTemplate,
+				Nudge:               startupNudge,
 				DefaultSlingFormula: &slingFormula,
 				Implicit:            true,
 			})

@@ -425,9 +425,19 @@ func CheckResidualVars(s string) []string {
 // ValidateVars checks that all required variables are provided
 // and all values pass their constraints.
 func ValidateVars(formula *Formula, values map[string]string) error {
+	return ValidateVarDefs(formula.Vars, values)
+}
+
+// ValidateVarDefs checks required/enum/pattern constraints against the given
+// variable definitions. Callers that only have a compiled Recipe (not the
+// source Formula) can pass Recipe.Vars directly.
+func ValidateVarDefs(defs map[string]*VarDef, values map[string]string) error {
 	var errs []string
 
-	for name, def := range formula.Vars {
+	for name, def := range defs {
+		if def == nil {
+			continue
+		}
 		val, provided := values[name]
 
 		// Check required

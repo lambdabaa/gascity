@@ -835,6 +835,8 @@ func executePlannedStartsTraced(
 	if len(candidates) == 0 {
 		return 0
 	}
+	maxWakes := cfg.Daemon.MaxWakesPerTickOrDefault()
+	maxParallelStarts := cfg.Daemon.MaxParallelStartsPerWaveOrDefault()
 	waveByCandidate, ok := candidateWaveOrder(candidates, cfg, desiredState, sp, cityName, store)
 	if !ok {
 		fmt.Fprintln(stderr, "session reconciler: dependency graph fallback to serial start order") //nolint:errcheck
@@ -857,7 +859,7 @@ func executePlannedStartsTraced(
 		if len(waveCandidates) == 0 {
 			continue
 		}
-		if wakeCount >= defaultMaxWakesPerTick {
+		if wakeCount >= maxWakes {
 			for _, candidate := range waveCandidates {
 				logLifecycleOutcome(stderr, "start", wave, candidate.name(), candidate.logicalTemplate(cfg), "deferred_by_wake_budget", time.Time{}, time.Time{}, nil)
 			}
@@ -872,13 +874,13 @@ func executePlannedStartsTraced(
 			ready = append(ready, candidate)
 		}
 		for offset := 0; offset < len(ready); {
-			if wakeCount >= defaultMaxWakesPerTick {
+			if wakeCount >= maxWakes {
 				for _, candidate := range ready[offset:] {
 					logLifecycleOutcome(stderr, "start", wave, candidate.name(), candidate.logicalTemplate(cfg), "deferred_by_wake_budget", time.Time{}, time.Time{}, nil)
 				}
 				break
 			}
-			batchSize := min(defaultMaxParallelStartsPerWave, defaultMaxWakesPerTick-wakeCount)
+			batchSize := min(maxParallelStarts, maxWakes-wakeCount)
 			end := min(offset+batchSize, len(ready))
 			var prepared []preparedStart
 			for _, candidate := range ready[offset:end] {
@@ -895,7 +897,7 @@ func executePlannedStartsTraced(
 				prepared = append(prepared, *item)
 			}
 			offset = end
-			results := executePreparedStartWave(ctx, prepared, sp, store, "", cfg, startupTimeout, defaultMaxParallelStartsPerWave)
+			results := executePreparedStartWave(ctx, prepared, sp, store, "", cfg, startupTimeout, maxParallelStarts)
 			for _, result := range results {
 				if trace != nil {
 					trace.recordOperation("reconciler.start.execute", result.prepared.candidate.tp.TemplateName, result.prepared.candidate.name(), "", "start", result.outcome, traceRecordPayload{

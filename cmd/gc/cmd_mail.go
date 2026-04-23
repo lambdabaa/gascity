@@ -139,8 +139,8 @@ func newMailCheckCmd(stdout, stderr io.Writer) *cobra.Command {
 
 Without --inject: prints the count and exits 0 if mail exists, 1 if
 empty. With --inject: outputs a <system-reminder> block suitable for
-hook injection (always exits 0). The recipient defaults to $GC_ALIAS,
-$GC_SESSION_ID, or "human".`,
+hook injection (always exits 0). The recipient defaults to $GC_SESSION_ID,
+$GC_ALIAS, or "human".`,
 		Example: `  gc mail check
   gc mail check --inject
   gc mail check mayor`,
@@ -257,11 +257,11 @@ func formatInjectOutput(messages []mail.Message) string {
 }
 
 func defaultMailIdentity() string {
-	if alias := strings.TrimSpace(os.Getenv("GC_ALIAS")); alias != "" {
-		return alias
-	}
 	if sessionID := strings.TrimSpace(os.Getenv("GC_SESSION_ID")); sessionID != "" {
 		return sessionID
+	}
+	if alias := strings.TrimSpace(os.Getenv("GC_ALIAS")); alias != "" {
+		return alias
 	}
 	if agent := strings.TrimSpace(os.Getenv("GC_AGENT")); agent != "" {
 		return agent
@@ -590,7 +590,7 @@ func newMailSendCmd(stdout, stderr io.Writer) *cobra.Command {
 		Long: `Send a message to a session alias or human.
 
 Creates a message bead addressed to the recipient. The sender defaults
-to $GC_ALIAS or $GC_SESSION_ID (in sessions) or "human". Use --notify to nudge
+to $GC_SESSION_ID or $GC_ALIAS (in sessions) or "human". Use --notify to nudge
 the recipient after sending. Use --from to override the sender identity.
 Use --to as an alternative to the positional <to> argument.
 Use -s/--subject for the summary line and -m/--message for the body text.
@@ -612,7 +612,7 @@ Use --all to broadcast to all live sessions (excluding sender and "human").`,
 	}
 	cmd.Flags().BoolVar(&notify, "notify", false, "nudge the recipient after sending")
 	cmd.Flags().BoolVar(&all, "all", false, "broadcast to all live sessions (excludes sender and human)")
-	cmd.Flags().StringVar(&from, "from", "", "sender identity (default: $GC_ALIAS, $GC_SESSION_ID, or \"human\")")
+	cmd.Flags().StringVar(&from, "from", "", "sender identity (default: $GC_SESSION_ID, $GC_ALIAS, or \"human\")")
 	cmd.Flags().StringVar(&to, "to", "", "recipient address (alternative to positional argument)")
 	cmd.Flags().StringVarP(&subject, "subject", "s", "", "message subject line")
 	cmd.Flags().StringVarP(&message, "message", "m", "", "message body text")
@@ -627,7 +627,7 @@ func newMailInboxCmd(stdout, stderr io.Writer) *cobra.Command {
 		Long: `List all unread messages for a session alias or human.
 
 Shows message ID, sender, subject, and body in a table. The recipient defaults
-to $GC_ALIAS, $GC_SESSION_ID, or "human". Pass a session alias to view another inbox.`,
+to $GC_SESSION_ID, $GC_ALIAS, or "human". Pass a session alias to view another inbox.`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(_ *cobra.Command, args []string) error {
 			if cmdMailInbox(args, stdout, stderr) != 0 {
@@ -764,7 +764,7 @@ func newMailCountCmd(stdout, stderr io.Writer) *cobra.Command {
 		Use:   "count [session]",
 		Short: "Show total/unread message count",
 		Long: `Show total and unread message counts for a session alias or human.
-The recipient defaults to $GC_ALIAS, $GC_SESSION_ID, or "human".`,
+The recipient defaults to $GC_SESSION_ID, $GC_ALIAS, or "human".`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			if cmdMailCount(args, stdout, stderr) != 0 {

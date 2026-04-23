@@ -29,6 +29,16 @@ func TestTmuxConfigFromSessionPreservesExplicitSocket(t *testing.T) {
 	}
 }
 
+func TestTmuxConfigFromSessionUsesEnvSocketOverride(t *testing.T) {
+	t.Setenv("GC_TMUX_SOCKET", "remote-socket")
+	sc := config.SessionConfig{Socket: "custom-socket"}
+
+	cfg := tmuxConfigFromSession(sc, "city", "/tmp/city-a")
+	if cfg.SocketName != "remote-socket" {
+		t.Fatalf("SocketName = %q, want %q", cfg.SocketName, "remote-socket")
+	}
+}
+
 func TestSessionProviderContextForCityUsesTargetCityAndEnvOverride(t *testing.T) {
 	t.Setenv("GC_SESSION", "subprocess")
 

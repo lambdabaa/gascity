@@ -1600,6 +1600,12 @@ func TestEffectiveScaleCheckDefaults(t *testing.T) {
 	if !strings.Contains(check, "--no-assignee") {
 		t.Errorf("EffectiveScaleCheck = %q, want --no-assignee for active unassigned work", check)
 	}
+	if !strings.Contains(check, "claimed=$(bd list") || !strings.Contains(check, "${claimed:-0}") {
+		t.Errorf("EffectiveScaleCheck = %q, want claimed in-progress assigned work counted", check)
+	}
+	if !strings.Contains(check, "--arg prefix 'refinery-'") || !strings.Contains(check, "--arg routed 'refinery'") || !strings.Contains(check, "${assigned:-0}") {
+		t.Errorf("EffectiveScaleCheck = %q, want assigned in-progress session work counted without double-counting routed claims", check)
+	}
 	if !strings.Contains(check, "--type=molecule") {
 		t.Errorf("EffectiveScaleCheck = %q, want --type=molecule for formula-dispatched work", check)
 	}
@@ -1624,6 +1630,12 @@ func TestEffectiveScaleCheckDefaultsQualified(t *testing.T) {
 	}
 	if !strings.Contains(check, "--no-assignee") {
 		t.Errorf("EffectiveScaleCheck = %q, want --no-assignee for active unassigned work", check)
+	}
+	if !strings.Contains(check, "claimed=$(bd list") || !strings.Contains(check, "${claimed:-0}") {
+		t.Errorf("EffectiveScaleCheck = %q, want claimed in-progress assigned work counted", check)
+	}
+	if !strings.Contains(check, "--arg prefix 'polecat-'") || !strings.Contains(check, "--arg routed 'myproject/polecat'") || !strings.Contains(check, "${assigned:-0}") {
+		t.Errorf("EffectiveScaleCheck = %q, want assigned in-progress session work counted without double-counting routed claims", check)
 	}
 	if !strings.Contains(check, "--type=molecule") {
 		t.Errorf("EffectiveScaleCheck = %q, want --type=molecule for formula-dispatched work", check)
@@ -3880,6 +3892,27 @@ func TestInjectImplicitAgents_ConfiguredOnly(t *testing.T) {
 		}
 		if a.MaxActiveSessions != nil {
 			t.Errorf("agent[%d].MaxActiveSessions = %v, want nil", i, a.MaxActiveSessions)
+		}
+	}
+}
+
+func TestInjectImplicitAgents_ProviderAgentsHaveStartupNudge(t *testing.T) {
+	cfg := &City{
+		Daemon: DaemonConfig{FormulaV2: true},
+		Providers: map[string]ProviderSpec{
+			"claude": {},
+			"codex":  {},
+		},
+		Rigs: []Rig{{Name: "repo", Path: "/tmp/repo"}},
+	}
+	InjectImplicitAgents(cfg)
+
+	for _, a := range cfg.Agents {
+		if !a.Implicit || a.Name == ControlDispatcherAgentName {
+			continue
+		}
+		if a.Nudge == "" {
+			t.Fatalf("implicit provider agent %q dir=%q has empty startup nudge", a.Name, a.Dir)
 		}
 	}
 }

@@ -319,6 +319,33 @@ func TestDeliverSessionNudgeWithProviderWaitIdleStartsClaudePollerWhenQueued(t *
 	}
 }
 
+func TestMaybeStartNudgePollerUsesRuntimeSessionOverride(t *testing.T) {
+	t.Setenv("GC_TMUX_SESSION", "main")
+	dir := t.TempDir()
+	target := nudgeTarget{
+		cityPath:    dir,
+		agent:       config.Agent{Name: "worker"},
+		resolved:    &config.ResolvedProvider{Name: "claude"},
+		sessionName: "controller-session",
+	}
+
+	called := false
+	prev := startNudgePoller
+	startNudgePoller = func(cityPath, agentName, sessionName string) error {
+		called = true
+		if cityPath != dir || agentName != "worker" || sessionName != "main" {
+			t.Fatalf("unexpected poller args city=%q agent=%q session=%q", cityPath, agentName, sessionName)
+		}
+		return nil
+	}
+	t.Cleanup(func() { startNudgePoller = prev })
+
+	maybeStartNudgePoller(target)
+	if !called {
+		t.Fatal("startNudgePoller was not called")
+	}
+}
+
 func TestPollerSessionIdleEnoughUsesLastActivityWithoutCapabilityFlag(t *testing.T) {
 	fake := runtime.NewFake()
 	if err := fake.Start(context.Background(), "sess-worker", runtime.Config{}); err != nil {
@@ -861,6 +888,60 @@ func TestTryDeliverQueuedNudgesByPollerDeliversAndAcks(t *testing.T) {
 	}
 	if len(dead) != 0 {
 		t.Fatalf("dead = %d, want 0", len(dead))
+	}
+}
+
+func TestTryDeliverQueuedNudgesByPollerUsesRuntimeSessionForDelivery(t *testing.T) {
+	t.Setenv("GC_BEADS", "file")
+	dir := t.TempDir()
+	now := time.Now().Add(-1 * time.Minute)
+	if err := enqueueQueuedNudge(dir, newQueuedNudge("controller-session", "check remote queue", "session", now)); err != nil {
+		t.Fatalf("enqueueQueuedNudge: %v", err)
+	}
+
+	fake := runtime.NewFake()
+	if err := fake.Start(context.Background(), "main", runtime.Config{}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	fake.Activity = map[string]time.Time{"main": time.Now().Add(-10 * time.Second)}
+
+	target := nudgeTarget{
+		cityPath:           dir,
+		resolved:           &config.ResolvedProvider{Name: "claude"},
+		sessionName:        "controller-session",
+		runtimeSessionName: "main",
+	}
+
+	delivered, err := tryDeliverQueuedNudgesByPoller(target, nil, fake, 3*time.Second)
+	if err != nil {
+		t.Fatalf("tryDeliverQueuedNudgesByPoller: %v", err)
+	}
+	if !delivered {
+		t.Fatal("delivered = false, want true")
+	}
+
+	var nudgeCalls []runtime.Call
+	for _, call := range fake.Calls {
+		if call.Method == "Nudge" {
+			nudgeCalls = append(nudgeCalls, call)
+		}
+	}
+	if len(nudgeCalls) != 1 {
+		t.Fatalf("nudge calls = %d, want 1", len(nudgeCalls))
+	}
+	if nudgeCalls[0].Name != "main" {
+		t.Fatalf("nudge session = %q, want runtime session main", nudgeCalls[0].Name)
+	}
+	if !strings.Contains(nudgeCalls[0].Message, "check remote queue") {
+		t.Fatalf("nudge message = %q, want original reminder", nudgeCalls[0].Message)
+	}
+
+	pending, inFlight, dead, err := listQueuedNudges(dir, "controller-session", time.Now())
+	if err != nil {
+		t.Fatalf("listQueuedNudges: %v", err)
+	}
+	if len(pending) != 0 || len(inFlight) != 0 || len(dead) != 0 {
+		t.Fatalf("pending=%d inFlight=%d dead=%d, want all zero", len(pending), len(inFlight), len(dead))
 	}
 }
 

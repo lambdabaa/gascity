@@ -504,6 +504,59 @@ esac
 	}
 }
 
+func TestProvider_StartHonorsCallerDeadline(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow test")
+	}
+
+	dir := t.TempDir()
+	script := writeScript(t, dir, `
+case "$1" in
+  start)
+    cat > /dev/null
+    sleep 2
+    ;;
+esac
+`)
+	p := NewProvider(script)
+	p.startTimeout = 500 * time.Millisecond
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := p.Start(ctx, "test-sess", runtime.Config{Command: "echo hi"}); err != nil {
+		t.Fatalf("Start should honor caller deadline instead of shorter provider fallback: %v", err)
+	}
+}
+
+func TestProvider_StartUsesFallbackTimeoutWithoutCallerDeadline(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow test")
+	}
+
+	dir := t.TempDir()
+	script := writeScript(t, dir, `
+case "$1" in
+  start)
+    cat > /dev/null
+    sleep 60
+    ;;
+esac
+`)
+	p := NewProvider(script)
+	p.startTimeout = 500 * time.Millisecond
+
+	start := time.Now()
+	err := p.Start(context.Background(), "test-sess", runtime.Config{Command: "echo hi"})
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected fallback start timeout, got nil")
+	}
+	if elapsed > 5*time.Second {
+		t.Errorf("Start fallback timeout took %v, expected ~500ms", elapsed)
+	}
+}
+
 // --- Conformance ---
 
 // mockProviderScript returns a shell script body that implements the full

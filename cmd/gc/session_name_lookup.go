@@ -205,6 +205,9 @@ func lookupPoolSessionNames(store beads.Store, template string) (map[string]stri
 			continue
 		}
 		if agentName == "" {
+			agentName = template
+		}
+		if resolvePoolSlot(agentName, template) == 0 {
 			agentName = template + "-" + b.Metadata["pool_slot"]
 		}
 		if agentName != "" {

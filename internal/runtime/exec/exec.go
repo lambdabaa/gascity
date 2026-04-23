@@ -55,7 +55,11 @@ func (p *Provider) runWithTimeout(dur time.Duration, stdinData []byte, args ...s
 // runWithContext executes the script using the given parent context with
 // the specified timeout, optionally piping stdinData to its stdin.
 func (p *Provider) runWithContext(parent context.Context, dur time.Duration, stdinData []byte, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(parent, dur)
+	ctx := parent
+	cancel := func() {}
+	if dur > 0 {
+		ctx, cancel = context.WithTimeout(parent, dur)
+	}
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, p.script, args...)
@@ -115,7 +119,11 @@ func (p *Provider) Start(ctx context.Context, name string, cfg runtime.Config) e
 	if err != nil {
 		return fmt.Errorf("exec provider: marshaling start config: %w", err)
 	}
-	if _, err = p.runWithContext(ctx, p.startTimeout, data, "start", name); err != nil {
+	timeout := p.startTimeout
+	if _, ok := ctx.Deadline(); ok {
+		timeout = 0
+	}
+	if _, err = p.runWithContext(ctx, timeout, data, "start", name); err != nil {
 		return err
 	}
 

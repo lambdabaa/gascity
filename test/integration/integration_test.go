@@ -310,7 +310,10 @@ func bd(dir string, args ...string) (string, error) {
 // bdDolt runs bd against a Dolt-backed city using the same isolated runtime
 // env as integration gc commands plus the city's managed Dolt port.
 func bdDolt(dir string, args ...string) (string, error) {
-	env := commandEnvForDir(dir, true)
+	return runBDDoltWithEnv(commandEnvForDir(dir, true), dir, args...)
+}
+
+func runBDDoltWithEnv(env []string, dir string, args ...string) (string, error) {
 	if dir != "" {
 		env = filterEnv(env, "GC_CITY")
 		env = filterEnv(env, "GC_CITY_PATH")

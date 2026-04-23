@@ -10,7 +10,9 @@ import (
 func TestMarshalStartConfig(t *testing.T) {
 	cfg := runtime.Config{
 		WorkDir:            "/tmp/work",
-		Command:            "claude --dangerously-skip-permissions",
+		Command:            "claude --dangerously-skip-permissions --effort max",
+		PromptSuffix:       "'You are an agent. Do work.'",
+		PromptFlag:         "--prompt",
 		Env:                map[string]string{"FOO": "bar", "BAZ": "qux"},
 		ProcessNames:       []string{"claude", "node"},
 		Nudge:              "hello agent",
@@ -34,8 +36,9 @@ func TestMarshalStartConfig(t *testing.T) {
 	if got.WorkDir != cfg.WorkDir {
 		t.Errorf("WorkDir = %q, want %q", got.WorkDir, cfg.WorkDir)
 	}
-	if got.Command != cfg.Command {
-		t.Errorf("Command = %q, want %q", got.Command, cfg.Command)
+	wantCommand := "claude --dangerously-skip-permissions --effort max --prompt 'You are an agent. Do work.'"
+	if got.Command != wantCommand {
+		t.Errorf("Command = %q, want %q", got.Command, wantCommand)
 	}
 	if got.Nudge != cfg.Nudge {
 		t.Errorf("Nudge = %q, want %q", got.Nudge, cfg.Nudge)

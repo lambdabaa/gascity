@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"testing"
 
@@ -190,3 +192,95 @@ var _ interface {
 	SuspendRig(string) error
 	ResumeRig(string) error
 } = (*controllerState)(nil)
+
+// TestBuildStoresExecProviderSetsRigPrefix verifies that when the bead
+// provider is "exec:<script>", each rig's store receives the rig's own
+// GC_BEADS_PREFIX via SetEnv. This defends the fix in PR #421
+// (api_state.go: env["GC_BEADS_PREFIX"] = prefix) against silent regression.
+//
+// Regression target: if api_state.go's openRigStore stopped setting
+// GC_BEADS_PREFIX before calling SetEnv, this test would fail.
+func TestBuildStoresExecProviderSetsRigPrefix(t *testing.T) {
+	captureDir := t.TempDir()
+
+	// Spy script: record GC_BEADS_PREFIX to a unique file on each invocation,
+	// then return a valid empty list so the caller succeeds.
+	spyScript := `#!/bin/sh
+op="$1"
+prefix="$GC_BEADS_PREFIX"
+outfile="` + captureDir + `/prefix-$$.env"
+echo "$prefix" > "$outfile"
+case "$op" in
+  list)  echo '[]' ;;
+  ready) echo '[]' ;;
+  *)     exit 2 ;;
+esac
+`
+	spyDir := t.TempDir()
+	spyPath := filepath.Join(spyDir, "spy-provider")
+	if err := os.WriteFile(spyPath, []byte(spyScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("GC_BEADS", "exec:"+spyPath)
+
+	rigADir := t.TempDir()
+	rigBDir := t.TempDir()
+
+	cfg := &config.City{
+		Workspace: config.Workspace{Name: "prefix-test"},
+		Rigs: []config.Rig{
+			{Name: "rig-a", Path: rigADir, Prefix: "rig-a-"},
+			{Name: "rig-b", Path: rigBDir, Prefix: "rig-b-"},
+		},
+	}
+
+	cityDir := t.TempDir()
+	cs := newControllerState(context.Background(), cfg, runtime.NewFake(), events.NewFake(), "prefix-test", cityDir)
+
+	// Trigger each rig's store to dispatch to the spy script.
+	for _, name := range []string{"rig-a", "rig-b"} {
+		store := cs.BeadStore(name)
+		if store == nil {
+			t.Fatalf("BeadStore(%q) = nil", name)
+		}
+		_, err := store.ListOpen()
+		if err != nil {
+			t.Fatalf("ListOpen on %q: %v", name, err)
+		}
+	}
+
+	// Read captured prefixes from spy output files.
+	entries, err := os.ReadDir(captureDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var captured []string
+	for _, e := range entries {
+		data, err := os.ReadFile(filepath.Join(captureDir, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		captured = append(captured, strings.TrimSpace(string(data)))
+	}
+
+	if len(captured) < 2 {
+		t.Fatalf("expected at least 2 spy invocations, got %d", len(captured))
+	}
+
+	sort.Strings(captured)
+	// With two rigs we expect exactly "rig-a-" and "rig-b-".
+	found := map[string]bool{}
+	for _, p := range captured {
+		found[p] = true
+		if p == "" {
+			t.Error("spy recorded an empty GC_BEADS_PREFIX — the prefix was not set")
+		}
+	}
+	if !found["rig-a-"] {
+		t.Errorf("no invocation received GC_BEADS_PREFIX=%q; captured: %v", "rig-a-", captured)
+	}
+	if !found["rig-b-"] {
+		t.Errorf("no invocation received GC_BEADS_PREFIX=%q; captured: %v", "rig-b-", captured)
+	}
+}

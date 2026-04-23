@@ -168,11 +168,10 @@ func doCityStatus(
 					maxDisplay = "max=unlimited"
 				}
 				fmt.Fprintf(stdout, "  %-24sscaled (min=%d, %s)\n", a.QualifiedName(), sp0.Min, maxDisplay) //nolint:errcheck // best-effort stdout
-				for _, qualifiedInstance := range discoverPoolInstances(a.Name, a.Dir, sp0, &a, cityName, cfg.Workspace.SessionTemplate, sp) {
-					sn := cliSessionName(cityPath, cityName, qualifiedInstance, cfg.Workspace.SessionTemplate)
-					obs, _ := workerObserveSessionTargetWithConfig(cityPath, store, sp, cfg, sn)
-					status := agentStatusLine(obs.Running, dops, sn, suspended || obs.Suspended)
-					fmt.Fprintf(stdout, "    %-22s%s\n", qualifiedInstance, status) //nolint:errcheck // best-effort stdout
+				for _, ref := range resolvePoolSessionRefs(store, a.Name, a.Dir, sp0, &a, cityName, cfg.Workspace.SessionTemplate, sp, stderr) {
+					obs, _ := workerObserveSessionTargetWithConfig(cityPath, store, sp, cfg, ref.sessionName)
+					status := agentStatusLine(obs.Running, dops, ref.sessionName, suspended || obs.Suspended)
+					fmt.Fprintf(stdout, "    %-22s%s\n", ref.qualifiedInstance, status) //nolint:errcheck // best-effort stdout
 					totalAgents++
 					if obs.Running {
 						runningAgents++
@@ -322,13 +321,12 @@ func doCityStatusJSON(
 
 		if isMultiSessionCfgAgent(&a) {
 			// Multi-session agent — emit each instance.
-			for _, qualifiedInstance := range discoverPoolInstances(a.Name, a.Dir, sp0, &a, cityName, cfg.Workspace.SessionTemplate, sp) {
-				_, instanceName := config.ParseQualifiedName(qualifiedInstance)
-				sn := cliSessionName(cityPath, cityName, qualifiedInstance, cfg.Workspace.SessionTemplate)
-				obs, _ := workerObserveSessionTargetWithConfig(cityPath, store, sp, cfg, sn)
+			for _, ref := range resolvePoolSessionRefs(store, a.Name, a.Dir, sp0, &a, cityName, cfg.Workspace.SessionTemplate, sp, stderr) {
+				_, instanceName := config.ParseQualifiedName(ref.qualifiedInstance)
+				obs, _ := workerObserveSessionTargetWithConfig(cityPath, store, sp, cfg, ref.sessionName)
 				agents = append(agents, StatusAgentJSON{
 					Name:          instanceName,
-					QualifiedName: qualifiedInstance,
+					QualifiedName: ref.qualifiedInstance,
 					Scope:         scope,
 					Running:       obs.Running,
 					Suspended:     suspended || obs.Suspended,

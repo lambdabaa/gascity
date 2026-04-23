@@ -66,7 +66,7 @@ The `start` operation receives a JSON object on stdin:
 ```json
 {
   "work_dir": "/path/to/working/directory",
-  "command": "claude --dangerously-skip-permissions",
+  "command": "claude --dangerously-skip-permissions --effort max 'You are an agent.'",
   "env": {"GC_AGENT": "mayor", "GC_CITY": "/home/user/bright-lights"},
   "process_names": ["claude", "node"],
   "nudge": "initial prompt text",
@@ -88,6 +88,10 @@ hints or ignore them:
   agent "started." A script can implement this by polling its backend's
   process tree after session creation, or ignore it for fire-and-forget
   behavior (like the subprocess provider does).
+
+- **`command`** — the fully resolved shell command line to execute. It already
+  includes provider args, schema-derived default flags, resume/session flags,
+  and startup prompt arguments.
 
 - **`nudge`** — text that the tmux adapter types into the session after
   the agent is ready. Scripts that support interactive input can handle

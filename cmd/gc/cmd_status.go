@@ -119,11 +119,10 @@ func doRigStatus(
 			status := agentStatusLine(obs.Running, dops, sn, a.Suspended || obs.Suspended)
 			fmt.Fprintf(stdout, "    %-12s%s\n", a.QualifiedName(), status) //nolint:errcheck // best-effort stdout
 		} else {
-			for _, qualifiedInstance := range discoverPoolInstances(a.Name, a.Dir, sp0, &a, cityName, sessionTemplate, sp) {
-				sn := cliSessionName(cityPath, cityName, qualifiedInstance, sessionTemplate)
-				obs, _ := workerObserveSessionTargetWithConfig(cityPath, store, sp, nil, sn)
-				status := agentStatusLine(obs.Running, dops, sn, a.Suspended || obs.Suspended)
-				fmt.Fprintf(stdout, "    %-12s%s\n", qualifiedInstance, status) //nolint:errcheck // best-effort stdout
+			for _, ref := range resolvePoolSessionRefs(store, a.Name, a.Dir, sp0, &a, cityName, sessionTemplate, sp, stderr) {
+				obs, _ := workerObserveSessionTargetWithConfig(cityPath, store, sp, nil, ref.sessionName)
+				status := agentStatusLine(obs.Running, dops, ref.sessionName, a.Suspended || obs.Suspended)
+				fmt.Fprintf(stdout, "    %-12s%s\n", ref.qualifiedInstance, status) //nolint:errcheck // best-effort stdout
 			}
 		}
 	}

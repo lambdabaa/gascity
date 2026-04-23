@@ -3,6 +3,8 @@ package main
 import (
 	"sync"
 	"time"
+
+	"github.com/gastownhall/gascity/internal/config"
 )
 
 // WakeReason describes why a session should be awake.
@@ -185,9 +187,11 @@ const (
 	// before it's considered stable (not a rapid exit / crash).
 	stabilityThreshold = 30 * time.Second
 
-	// maxWakesPerTick limits how many sessions can be woken per reconciler
+	// defaultMaxWakesPerTick limits how many sessions can be woken per reconciler
 	// tick to prevent thundering herd after controller restart.
-	defaultMaxWakesPerTick = 5
+	// Kept as a compile-time constant for tests; runtime uses
+	// config.DaemonConfig.MaxWakesPerTickOrDefault().
+	defaultMaxWakesPerTick = config.DefaultMaxWakesPerTick
 
 	// defaultTickBudget is the wall-clock budget per reconciler tick.
 	// Remaining work is deferred to the next tick.

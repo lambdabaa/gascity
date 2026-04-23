@@ -154,14 +154,7 @@ func (p *Provider) Start(ctx context.Context, name string, cfg runtime.Config) e
 		_ = overlay.CopyFileOrDir(cf.Src, dst, io.Discard)
 	}
 
-	command := cfg.Command
-	if cfg.PromptSuffix != "" {
-		if cfg.PromptFlag != "" {
-			command = command + " " + cfg.PromptFlag + " " + cfg.PromptSuffix
-		} else {
-			command = command + " " + cfg.PromptSuffix
-		}
-	}
+	command := cfg.CommandLine()
 	if command == "" {
 		clearSentinel()
 		return fmt.Errorf("acp provider requires a command")

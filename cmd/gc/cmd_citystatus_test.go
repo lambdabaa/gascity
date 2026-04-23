@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/config"
+	"github.com/gastownhall/gascity/internal/fsys"
 	"github.com/gastownhall/gascity/internal/runtime"
 )
 
@@ -97,6 +100,57 @@ func TestCityStatusSuspended(t *testing.T) {
 	out := stdout.String()
 	if !strings.Contains(out, "Suspended:  yes") {
 		t.Errorf("stdout missing 'Suspended:  yes', got:\n%s", out)
+	}
+}
+
+func TestCityStatusUnlimitedPoolUsesBeadBackedSessionNames(t *testing.T) {
+	t.Setenv("GC_BEADS", "file")
+	t.Setenv("GC_DOLT", "skip")
+
+	cityPath := t.TempDir()
+	store, err := beads.OpenFileStore(fsys.OSFS{}, filepath.Join(cityPath, ".gc", "beads.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.Create(beads.Bead{
+		Title:  "claude",
+		Type:   sessionBeadType,
+		Labels: []string{sessionBeadLabel, "agent:claude"},
+		Metadata: map[string]string{
+			"agent_name":   "claude",
+			"pool_slot":    "1",
+			"session_name": "claude-ae-6fx",
+			"state":        "awake",
+			"template":     "claude",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sp := runtime.NewFake()
+	if err := sp.Start(context.Background(), "claude-ae-6fx", runtime.Config{Command: "echo"}); err != nil {
+		t.Fatal(err)
+	}
+	dops := newFakeDrainOps()
+	cfg := &config.City{
+		Workspace: config.Workspace{Name: "city"},
+		Agents: []config.Agent{
+			{Name: "claude"},
+		},
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := doCityStatus(sp, dops, cfg, cityPath, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "claude-1") {
+		t.Fatalf("stdout missing bead-backed pool instance claude-1, got:\n%s", out)
+	}
+	if !strings.Contains(out, "1/1 agents running") {
+		t.Fatalf("stdout missing '1/1 agents running', got:\n%s", out)
 	}
 }
 

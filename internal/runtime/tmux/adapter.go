@@ -835,7 +835,7 @@ func runPreStart(ctx context.Context, ops startOps, _ string, cfg runtime.Config
 const maxInlinePromptLen = 1024
 
 func ensureFreshSession(ops startOps, name string, cfg runtime.Config) error {
-	fullCommand := cfg.Command
+	fullCommand := cfg.CommandLine()
 	if cfg.PromptSuffix != "" {
 		if len(cfg.PromptSuffix) > maxInlinePromptLen && cfg.WorkDir != "" {
 			// Large prompt — write to temp file and use $(cat ...) expansion
@@ -851,17 +851,7 @@ func ensureFreshSession(ops startOps, name string, cfg runtime.Config) error {
 				}
 			} else {
 				// Fall back to inline (will likely fail, but preserves old behavior).
-				if cfg.PromptFlag != "" {
-					fullCommand = fullCommand + " " + cfg.PromptFlag + " " + cfg.PromptSuffix
-				} else {
-					fullCommand = fullCommand + " " + cfg.PromptSuffix
-				}
-			}
-		} else {
-			if cfg.PromptFlag != "" {
-				fullCommand = fullCommand + " " + cfg.PromptFlag + " " + cfg.PromptSuffix
-			} else {
-				fullCommand = fullCommand + " " + cfg.PromptSuffix
+				fullCommand = cfg.CommandLine()
 			}
 		}
 	}

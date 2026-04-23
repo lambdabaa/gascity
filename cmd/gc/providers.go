@@ -76,10 +76,14 @@ func sessionProviderContextForCity(cfg *config.City, cityPath, providerOverride 
 var openSessionProviderStore = openCityStoreAt
 
 // tmuxConfigFromSession converts a config.SessionConfig into a
-// sessiontmux.Config with resolved durations and defaults. If the
-// config has no explicit socket name, cityName is used.
+// sessiontmux.Config with resolved durations and defaults. GC_TMUX_SOCKET
+// overrides city config for in-container runtimes; otherwise, config socket
+// wins and cityName is used as the default.
 func tmuxConfigFromSession(sc config.SessionConfig, cityName, _ string) sessiontmux.Config {
 	socketName := sc.Socket
+	if override := strings.TrimSpace(os.Getenv("GC_TMUX_SOCKET")); override != "" {
+		socketName = override
+	}
 	if socketName == "" {
 		socketName = cityName
 	}

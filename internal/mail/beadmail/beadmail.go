@@ -278,15 +278,19 @@ func (p *Provider) messageCandidates(recipient string) ([]beads.Bead, error) {
 	}
 
 	// Supplement: label query catches messages that type/assignee queries
-	// may miss (some external stores omit messages from generic queries).
-	labeled, err := p.store.List(beads.ListQuery{
-		Label: "gc:message",
-		Sort:  beads.SortCreatedDesc,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("listing gc:message beads: %w", err)
+	// may miss (some external stores omit messages from generic queries). Skip
+	// it for BdStore: beadmail writes Type=message there, and broad label
+	// searches are expensive over remote Dolt connections.
+	if needsMessageLabelSupplement(p.store) {
+		labeled, err := p.store.List(beads.ListQuery{
+			Label: "gc:message",
+			Sort:  beads.SortCreatedDesc,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("listing gc:message beads: %w", err)
+		}
+		add(labeled)
 	}
-	add(labeled)
 
 	result := make([]beads.Bead, 0, len(order))
 	for _, id := range order {
@@ -298,6 +302,11 @@ func (p *Provider) messageCandidates(recipient string) ([]beads.Bead, error) {
 // isMessage returns true if the bead is a message (by Type or gc:message label).
 func isMessage(b beads.Bead) bool {
 	return b.Type == "message" || hasLabel(b.Labels, "gc:message")
+}
+
+func needsMessageLabelSupplement(store beads.Store) bool {
+	_, isBD := store.(*beads.BdStore)
+	return !isBD
 }
 
 // beadToMessage converts a bead to a mail.Message.

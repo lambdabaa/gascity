@@ -404,6 +404,22 @@ type Config struct {
 	PromptFlag string
 }
 
+// CommandLine returns the shell command a provider should execute when it
+// does not need provider-specific command transport behavior. It includes the
+// base command plus all already-resolved command-line fragments carried by
+// Config, including schema-derived defaults in Command and prompt arguments.
+func (cfg Config) CommandLine() string {
+	command := cfg.Command
+	if cfg.PromptSuffix != "" {
+		if cfg.PromptFlag != "" {
+			command = command + " " + cfg.PromptFlag + " " + cfg.PromptSuffix
+		} else {
+			command = command + " " + cfg.PromptSuffix
+		}
+	}
+	return strings.TrimSpace(command)
+}
+
 // SyncWorkDirEnv returns cfg with GC_DIR synchronized to WorkDir.
 // It copies the Env map before mutation so callers can safely derive
 // per-session configs from shared template state.

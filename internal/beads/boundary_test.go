@@ -53,7 +53,7 @@ func TestNoBdExecOutsideBeads(t *testing.T) {
 		}
 		if info.IsDir() {
 			base := filepath.Base(path)
-			if base == ".git" || base == "vendor" || base == ".claude" || strings.HasPrefix(base, ".beads-src") {
+			if base == ".git" || base == "vendor" || base == ".claude" || base == "worktrees" || base == "_wt" || strings.HasPrefix(base, ".beads-src") || strings.HasPrefix(base, "worktree-") {
 				return filepath.SkipDir
 			}
 			return nil
