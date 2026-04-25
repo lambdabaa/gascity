@@ -42,6 +42,9 @@ var rigFlag string
 // run executes the gc CLI with the given args, writing output to stdout and
 // errors to stderr. Returns the exit code.
 func run(args []string, stdout, stderr io.Writer) int {
+	perfTraceDone := maybeStartPerfTrace(args)
+	defer perfTraceDone()
+
 	// Initialize OTel telemetry (opt-in via GC_OTEL_METRICS_URL / GC_OTEL_LOGS_URL).
 	provider, err := telemetry.Init(context.Background(), "gascity", version)
 	if err != nil {
@@ -112,6 +115,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 		newEventCmd(stdout, stderr),
 		newEventsCmd(stdout, stderr),
 		newTraceCmd(stdout, stderr),
+		newPerfCmd(stdout, stderr),
 		newOrderCmd(stdout, stderr),
 		newImportCmd(stdout, stderr),
 		newConfigCmd(stdout, stderr),
