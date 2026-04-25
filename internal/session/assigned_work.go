@@ -51,6 +51,7 @@ func AssignedOpenWork(stores []beads.Store, sessionID string, metadata map[strin
 		for _, target := range targets {
 			items, err := store.List(beads.ListQuery{
 				Assignee: target,
+				Limit:    1,
 				Sort:     beads.SortCreatedDesc,
 			})
 			if err != nil {

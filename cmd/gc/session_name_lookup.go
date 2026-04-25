@@ -148,8 +148,11 @@ func findSessionNameByTemplate(store beads.Store, template string) string {
 }
 
 // lookupSessionName resolves a qualified agent name to its bead-derived
-// session name by querying the bead store. Returns the session name and
-// true if found, or ("", false) if no matching session bead exists.
+// session name by querying the bead store. This intentionally preserves
+// template-only lookup semantics; CLI identifier resolution that should
+// honor aliases or session names must use session.ResolveSessionID.
+// Returns the session name and true if found, or ("", false) if no
+// matching session bead exists.
 //
 // This is the CLI-facing equivalent of agentBuildParams.resolveSessionName,
 // for use by commands that don't go through buildDesiredState.
