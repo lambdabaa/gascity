@@ -9,7 +9,7 @@ title: "Event Bus"
 
 The Event Bus is Gas City's Layer 0-1 primitive providing an append-only
 pub/sub log of all system activity -- the universal observation substrate.
-Every state change in the system (agent started, bead created, order
+Every state change in the system (session woke, bead created, order
 fired, controller lifecycle) is recorded as an immutable event with a
 monotonically increasing sequence number. The event bus enables
 infrastructure mechanisms like order gate evaluation, CLI event
@@ -223,11 +223,11 @@ are enforced by the conformance suite in
 | Depended on by | How |
 |---|---|
 | `cmd/gc/controller.go` | Records `controller.started` and `controller.stopped` events at lifecycle boundaries; passes `Recorder` to reconciliation and shutdown |
-| `cmd/gc/reconcile.go` | Records `agent.started`, `agent.stopped`, `agent.crashed`, `agent.idle_killed`, `agent.quarantined`, `agent.suspended` events during reconciliation |
+| `cmd/gc/reconcile.go` | Records `session.woke`, `session.stopped`, `session.crashed`, `session.idle_killed`, `session.quarantined`, `session.suspended` events during reconciliation |
 | `cmd/gc/order_dispatch.go` | Records `order.fired`, `order.completed`, `order.failed` events during order dispatch |
 | `cmd/gc/cmd_events.go` | CLI `gc events` command: reads and displays events with filtering (`--type`, `--since`), watch mode (`--watch`), and sequence query (`--seq`) |
 | `cmd/gc/cmd_event_emit.go` | CLI `gc event emit` command: records custom events from scripts and bd hooks (best-effort, always exits 0) |
-| `cmd/gc/cmd_agent.go` | Records agent lifecycle events during start/stop/restart operations |
+| `cmd/gc/cmd_session.go` | Records session lifecycle events during start/stop operations |
 | `cmd/gc/cmd_suspend.go` | Records `city.suspended` and `city.resumed` events |
 | `cmd/gc/cmd_mail.go` | Records `mail.sent` and `mail.read` events |
 | `cmd/gc/cmd_convoy.go` | Records `convoy.created` and `convoy.closed` events |
@@ -256,14 +256,15 @@ All event type constants are defined in `internal/events/events.go`:
 
 | Constant | Value | Emitted by |
 |---|---|---|
-| `AgentStarted` | `agent.started` | Controller reconciliation on agent start |
-| `AgentStopped` | `agent.stopped` | Controller reconciliation on agent stop, shutdown, or drain completion |
-| `AgentCrashed` | `agent.crashed` | Controller reconciliation when a running agent's process is gone |
-| `AgentDraining` | `agent.draining` | Agent drain command |
-| `AgentUndrained` | `agent.undrained` | Agent undrain command |
-| `AgentQuarantined` | `agent.quarantined` | Controller when crash loop threshold exceeded |
-| `AgentIdleKilled` | `agent.idle_killed` | Controller when idle timeout exceeded |
-| `AgentSuspended` | `agent.suspended` | Controller when agent is suspended via config |
+| `SessionWoke` | `session.woke` | Controller reconciliation when a session becomes awake |
+| `SessionStopped` | `session.stopped` | Controller reconciliation on session stop, shutdown, or drain completion |
+| `SessionCrashed` | `session.crashed` | Controller reconciliation when a running session's process is gone |
+| `SessionDraining` | `session.draining` | Session drain command |
+| `SessionUndrained` | `session.undrained` | Session undrain command |
+| `SessionQuarantined` | `session.quarantined` | Controller when crash loop threshold exceeded |
+| `SessionIdleKilled` | `session.idle_killed` | Controller when idle timeout exceeded |
+| `SessionSuspended` | `session.suspended` | Controller when a session is suspended via config |
+| `SessionUpdated` | `session.updated` | Session metadata updates |
 | `BeadCreated` | `bead.created` | Bead creation hooks |
 | `BeadClosed` | `bead.closed` | Bead close hooks |
 | `BeadUpdated` | `bead.updated` | Bead update hooks |
@@ -303,7 +304,7 @@ is a complete, self-contained JSON object:
 
 ```json
 {"seq":1,"type":"controller.started","ts":"2026-03-01T10:00:00Z","actor":"gc"}
-{"seq":2,"type":"agent.started","ts":"2026-03-01T10:00:01Z","actor":"gc","subject":"worker-1","message":"agent started successfully"}
+{"seq":2,"type":"session.woke","ts":"2026-03-01T10:00:01Z","actor":"gc","subject":"worker-1","message":"session woke successfully"}
 {"seq":3,"type":"bead.created","ts":"2026-03-01T10:00:05Z","actor":"human","subject":"gc-42","payload":{"title":"Fix bug","labels":["urgent"]}}
 ```
 

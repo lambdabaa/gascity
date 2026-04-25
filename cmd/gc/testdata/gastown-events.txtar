@@ -43,9 +43,9 @@ stdout 'gc-5'
 
 # --- 4. Custom events via gc event emit ---
 
-exec gc event emit agent.crashed --subject mayor --actor controller --message 'Session timeout'
-exec gc events --type agent.crashed
-stdout 'agent.crashed'
+exec gc event emit session.crashed --subject mayor --actor controller --message 'Session timeout'
+exec gc events --type session.crashed
+stdout 'session.crashed'
 stdout 'mayor'
 
 # --- 5. Event ordering is monotonic ---
