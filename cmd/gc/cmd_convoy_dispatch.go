@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"path/filepath"
 	"strings"
 
 	"github.com/gastownhall/gascity/internal/beads"
@@ -108,13 +109,49 @@ func runControlDispatcher(beadID string, stdout, _ io.Writer) error {
 
 	readDoltPort(cityPath)
 
-	// Try all stores (city + rigs) to find the bead.
-	store, bead, err := findBeadAcrossStores(cityPath, beadID)
+	// Manual control dispatch keeps the operator convenience of resolving a
+	// bead ID across city and rig stores.
+	store, bead, storePath, err := findBeadAcrossStores(cityPath, beadID)
 	if err != nil {
 		return fmt.Errorf("loading bead %s: %w", beadID, err)
 	}
 
-	opts := dispatch.ProcessOptions{CityPath: cityPath}
+	return runControlDispatcherWithStore(cityPath, storePath, store, bead, beadID, stdout)
+}
+
+func runControlDispatcherInStore(cityPath, storePath, beadID string, stdout, _ io.Writer) error {
+	if cityPath == "" {
+		var err error
+		cityPath, err = resolveCity()
+		if err != nil {
+			return err
+		}
+	}
+	if storePath == "" {
+		storePath = cityPath
+	}
+
+	readDoltPort(cityPath)
+
+	cfg, err := loadCityConfig(cityPath)
+	if err != nil {
+		return err
+	}
+	resolveRigPaths(cityPath, cfg.Rigs)
+	store, err := openControlStoreAtForCity(storePath, cityPath, cfg)
+	if err != nil {
+		return fmt.Errorf("opening scoped control store %q: %w", storePath, err)
+	}
+	bead, err := store.Get(beadID)
+	if err != nil {
+		return fmt.Errorf("loading bead %s from scoped control store %q: %w", beadID, storePath, err)
+	}
+
+	return runControlDispatcherWithStore(cityPath, storePath, store, bead, beadID, stdout)
+}
+
+func runControlDispatcherWithStore(cityPath, storePath string, store beads.Store, bead beads.Bead, beadID string, stdout io.Writer) error {
+	opts := dispatch.ProcessOptions{CityPath: cityPath, StorePath: storePath}
 	opts.Tracef = workflowTracef
 	loadCfg := false
 	switch bead.Metadata["gc.kind"] {
@@ -170,38 +207,57 @@ func runControlDispatcher(beadID string, stdout, _ io.Writer) error {
 	return nil
 }
 
+func openControlStoreAtForCity(storePath, cityPath string, cfg *config.City) (beads.Store, error) {
+	if cfg != nil {
+		for _, rig := range cfg.Rigs {
+			rigPath := rig.Path
+			if !filepath.IsAbs(rigPath) {
+				rigPath = filepath.Join(cityPath, rigPath)
+			}
+			if samePath(rigPath, storePath) {
+				if rawBeadsProvider(cityPath) != "bd" {
+					return openStoreAtForCity(storePath, cityPath)
+				}
+				return bdStoreForRig(storePath, cityPath, cfg), nil
+			}
+		}
+	}
+	return openStoreAtForCity(storePath, cityPath)
+}
+
 // findBeadAcrossStores tries the city store first, then all rig stores,
 // returning the store and bead on first match.
-func findBeadAcrossStores(cityPath, beadID string) (beads.Store, beads.Bead, error) {
+func findBeadAcrossStores(cityPath, beadID string) (beads.Store, beads.Bead, string, error) {
 	// Try city store first.
 	cityStore, err := openStoreAtForCity(cityPath, cityPath)
 	if err != nil {
-		return nil, beads.Bead{}, fmt.Errorf("opening city store: %w", err)
+		return nil, beads.Bead{}, "", fmt.Errorf("opening city store: %w", err)
 	}
 	if b, err := cityStore.Get(beadID); err == nil {
-		return cityStore, b, nil
+		return cityStore, b, cityPath, nil
 	} else if !errors.Is(err, beads.ErrNotFound) {
-		return nil, beads.Bead{}, fmt.Errorf("getting bead %q from city store: %w", beadID, err)
+		return nil, beads.Bead{}, "", fmt.Errorf("getting bead %q from city store: %w", beadID, err)
 	}
 
 	// Try rig stores.
 	cfg, err := loadCityConfig(cityPath)
 	if err != nil {
-		return nil, beads.Bead{}, fmt.Errorf("getting bead %q: not in city store, and config unavailable: %w", beadID, err)
+		return nil, beads.Bead{}, "", fmt.Errorf("getting bead %q: not in city store, and config unavailable: %w", beadID, err)
 	}
+	resolveRigPaths(cityPath, cfg.Rigs)
 	for _, rig := range cfg.Rigs {
-		rigStore, err := openStoreAtForCity(rig.Path, cityPath)
+		rigStore, err := openControlStoreAtForCity(rig.Path, cityPath, cfg)
 		if err != nil {
-			return nil, beads.Bead{}, fmt.Errorf("opening rig store %q: %w", rig.Name, err)
+			return nil, beads.Bead{}, "", fmt.Errorf("opening rig store %q: %w", rig.Name, err)
 		}
 		if b, err := rigStore.Get(beadID); err == nil {
-			return rigStore, b, nil
+			return rigStore, b, rig.Path, nil
 		} else if !errors.Is(err, beads.ErrNotFound) {
-			return nil, beads.Bead{}, fmt.Errorf("getting bead %q from rig store %q: %w", beadID, rig.Name, err)
+			return nil, beads.Bead{}, "", fmt.Errorf("getting bead %q from rig store %q: %w", beadID, rig.Name, err)
 		}
 	}
 
-	return nil, beads.Bead{}, fmt.Errorf("getting bead %q: bead not found", beadID)
+	return nil, beads.Bead{}, "", fmt.Errorf("getting bead %q: bead not found", beadID)
 }
 
 func workflowFormulaSearchPaths(cfg *config.City, bead beads.Bead) []string {

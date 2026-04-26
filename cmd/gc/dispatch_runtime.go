@@ -63,7 +63,7 @@ func applyGraphRouting(recipe *formula.Recipe, a *config.Agent, routedTo string,
 
 var (
 	workflowServeList               = nextWorkflowServeBeads
-	controlDispatcherServe          = runControlDispatcher
+	controlDispatcherServe          = runControlDispatcherInStore
 	workflowServeOpenEventsProvider = func(stderr io.Writer) (events.Provider, error) {
 		ep, code := openCityEventsProvider(stderr, "gc convoy control --serve")
 		if ep == nil {
@@ -171,16 +171,16 @@ func runWorkflowServe(agentName string, follow bool, _ io.Writer, stderr io.Writ
 	queryEnv := mergeRuntimeEnv(os.Environ(), overrides)
 	workflowTracef("serve start agent=%s city=%s dir=%s", agentCfg.QualifiedName(), cityPath, workDir)
 	if !follow {
-		return drainWorkflowServeWork(agentCfg, workDir, queryEnv, stderr)
+		return drainWorkflowServeWork(agentCfg, cityPath, workDir, queryEnv, stderr)
 	}
-	return runWorkflowServeFollow(agentCfg, workDir, queryEnv, stderr)
+	return runWorkflowServeFollow(agentCfg, cityPath, workDir, queryEnv, stderr)
 }
 
-func drainWorkflowServeWork(agentCfg config.Agent, workDir string, queryEnv []string, stderr io.Writer) error {
+func drainWorkflowServeWork(agentCfg config.Agent, cityPath, storePath string, queryEnv []string, stderr io.Writer) error {
 	processedAny := false
 	idlePolls := 0
 	for {
-		queue, err := workflowServeList(workflowServeQuery(agentCfg.EffectiveWorkQuery()), workDir, queryEnv)
+		queue, err := workflowServeList(workflowServeQuery(agentCfg.EffectiveWorkQuery()), storePath, queryEnv)
 		if err != nil {
 			workflowTracef("serve query-error agent=%s err=%v", agentCfg.QualifiedName(), err)
 			return fmt.Errorf("querying control work for %s: %w", agentCfg.QualifiedName(), err)
@@ -205,8 +205,8 @@ func drainWorkflowServeWork(agentCfg config.Agent, workDir string, queryEnv []st
 				workflowTracef("serve unexpected-kind bead=%s kind=%s", beadID, kind)
 				return fmt.Errorf("bead %s has unexpected non-control kind %q", beadID, kind)
 			}
-			workflowTracef("serve process bead=%s kind=%s", beadID, kind)
-			if err := controlDispatcherServe(beadID, io.Discard, stderr); err != nil {
+			workflowTracef("serve process bead=%s kind=%s store=%s", beadID, kind, storePath)
+			if err := controlDispatcherServe(cityPath, storePath, beadID, io.Discard, stderr); err != nil {
 				if errors.Is(err, dispatch.ErrControlPending) {
 					pendingCount++
 					workflowTracef("serve pending bead=%s kind=%s", beadID, kind)
@@ -230,7 +230,7 @@ func drainWorkflowServeWork(agentCfg config.Agent, workDir string, queryEnv []st
 	}
 }
 
-func runWorkflowServeFollow(agentCfg config.Agent, workDir string, queryEnv []string, stderr io.Writer) error {
+func runWorkflowServeFollow(agentCfg config.Agent, cityPath, storePath string, queryEnv []string, stderr io.Writer) error {
 	ep, err := workflowServeOpenEventsProvider(stderr)
 	if err != nil {
 		return err
@@ -253,7 +253,7 @@ func runWorkflowServeFollow(agentCfg config.Agent, workDir string, queryEnv []st
 	go pumpWorkflowEvents(done, watcher, eventCh)
 
 	for {
-		if err := drainWorkflowServeWork(agentCfg, workDir, queryEnv, stderr); err != nil {
+		if err := drainWorkflowServeWork(agentCfg, cityPath, storePath, queryEnv, stderr); err != nil {
 			return err
 		}
 		if err := waitForRelevantWorkflowWake(eventCh); err != nil {
